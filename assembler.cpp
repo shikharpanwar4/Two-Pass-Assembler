@@ -1,301 +1,239 @@
 #include<bits/stdc++.h>
 using namespace std;
-
-string dec_to_bin(int decimal)
-{
-	string binary = "";
-	for(int i = decimal;i > 0;i/=2)
-		binary = to_string(i%2) + binary;
-	if(binary.length() < 8)
-		binary = string(8-binary.length(),'0').append(binary);
-	return binary;
-}
-
-
-struct mnemonics{
-	string name;
-	string binary;
-	int size;
-}MOT[15];
-
-struct symbol{ 
-	string name;
-	string type;
-	int location;
-	int size;
-	int section_id;
-	string is_global;
+struct Opcode{
+        char name[10];
+        char code[35];
+        char format[5];
+        struct Opcode *next;
+};
+struct Symbol{
+    char name[50];
+    int add;
+    struct Symbol *next;
 };
 
-struct section{ 
-	int id;
-	string name;
-	int size;
-};
 
-vector<symbol> symbol_table; 
-vector<section> section_table; 
-int lc = 0; 
-int sec_id = 0; 
-int var_lc; 
-ifstream in_f; 
-ofstream out_f; 
-string word; 
-string str; 
-int pointer,size; 
+Symbol *head=NULL;
 
-int search_MOT(string opcode) 
-{
-	int index = -1;
-	for(int i = 0;i < 15;i++)
-	{
-		if(MOT[i].name == opcode)
-		{
-			index = i;
-			break;
-		}
-	}
-	return index;
+Opcode* hash_table[13] = {NULL};
+
+int* Binary(int num){
+    int temp=num;
+    int *arr=new int[10]();
+    for(int i=9;i>=0;i--){
+        arr[i]=temp%2;
+        temp/=2;
+    }
+    return arr;
 }
 
-int search_symbol_table(string variable) 
-{
-	int location = -1;
-	for(vector<symbol>::const_iterator i = symbol_table.begin();i != symbol_table.end();++i)
-	{
-		if(i->name == variable)
-		{
-			location = i->location;
-			break;
-		}
-	}
-  	return location;
+char* MCode(int dec) {
+     char *str = new char[5];
+     for(int i=4;i>=0;i--){
+        str[i]=(dec%2)+'0';
+        dec/=2;
+     }
+     return str;
 }
 
-int get_size(string data) 
-{
-	int size = 0;
-	for(int i = 0;i < data.length();i++)
-	{
-		if(data[i] == ',')
-			size += 4;
-	}
-	size += 4;
-	return size;
+int getHashIndex(char name[]){
+    int sum=0,i=0;
+    while(name[i]!='\0'){
+        sum+=name[i++];
+    }
+    return sum%13;
 }
-
-string get_data(string data) 
-{
-	string final;
-	string temp_str = "";
-	for(int i = 0;i < data.length();i++)
-	{
-		if(data[i] == ',')
-		{
-			final += dec_to_bin(stoi(temp_str.c_str()))+",";
-			temp_str = "";
-		}
-		else 
-			temp_str += data[i];
-	}
-	final += dec_to_bin(stoi(temp_str.c_str()))+",";
-	temp_str = "";
-	final.erase(final.length()-1,1);
-	return final;
+void insertAtIndex(Opcode *Node,int index){
+    if(hash_table[index] == NULL){
+        hash_table[index] = Node;
+        Node->next = NULL;
+    }
+    else{
+        Opcode* temp = hash_table[index];
+        while(temp->next != NULL){
+            temp = temp->next;
+        }
+        temp->next = Node;
+        Node->next=NULL;
+    }
 }
-
-void store_symbol_table() 
-{
-	out_f.open("symbol.csv");
-	out_f << "Name,Type,Location,Size,SectionID,IsGlobal\n";
-	for(vector<symbol>::const_iterator i = symbol_table.begin();i != symbol_table.end();++i)
-	{
-		out_f << i->name<<",";
-		out_f << i->type<<",";
-		out_f << i->location<<",";
-		out_f << i->size<<",";
-		out_f << i->section_id<<",";
-		out_f << i->is_global<<"\n";
-	}	
-	out_f.close();
+void insertIntoHashMap(Opcode *Node){
+    int index = getHashIndex(Node->name);
+    insertAtIndex(Node,index);
 }
-
-void store_sec() 
-{
-	out_f.open("section.csv");
-	out_f << "ID,Name,Size\n";
-	for(vector<section>::const_iterator i = section_table.begin();i != section_table.end();++i)
-	{
-		out_f << i->id<<",";
-		out_f << i->name<<",";
-		out_f << i->size<<"\n";
-	}
-	out_f.close();
+int * getAddressCode(char * temp){
+    Symbol * t = head;
+    int * val;
+    int num;
+    while(t != NULL){
+        if(!strcmp(temp,t->name)){
+            num = t->add;
+            break;
+        }
+        t = t->next;
+    }
+    val =Binary(num);
+    return val;
 }
-
-void pass1()
-{
-	
-	in_f.open("input.txt");
-	while(in_f >> word)
-	{
-		pointer = search_MOT(word);
-		if(pointer == -1)
-		{
-			str = word;
-			if(word.find(":") != -1)
-			{
-				symbol_table.push_back({str.erase(word.length()-1,1),"label",lc,-1,sec_id,"false"});
-			}
-			else if(word == "section")
-			{
-				in_f >> word;
-				sec_id++;
-				section_table.push_back({sec_id,word,0}); 
-				if(sec_id != 1) 
-				{
-					section_table[sec_id-2].size = lc;
-					lc = 0;
-				}
-			}
-			else if(word == "global") 
-			{
-				in_f >> word;
-				symbol_table.push_back({word,"label",-1,-1,-1,"true"}); 
-			}
-			else if(word == "extern") 
-			{
-				in_f >> word;
-				symbol_table.push_back({word,"external",-1,-1,-1,"false"}); 
-			}
-			else
-			{
-				in_f >> word;
-				in_f >> word;
-				size = get_size(word);
-				symbol_table.push_back({str,"var",lc,size,sec_id,"false"}); 
-				lc += size;
-			}
-		}
-		else
-		{
-			if(!(pointer == 9 || pointer == 14)) 
-				in_f >> word;
-			if(pointer==2 || pointer==10 || pointer == 11)
-				in_f >> word;
-			lc += MOT[pointer].size;
-		}
-	}
-	
-	section_table[sec_id-1].size = lc; 
-	
-	store_symbol_table();
-	store_sec();
-	
-	in_f.close();
+char * findRegister(char* temp){
+    char *s;
+    if (strcmp(temp,"R0") == 0){
+        s = "000";
+    }
+    else if (strcmp(temp,"R1") == 0)
+        s = "001";
+    else if (strcmp(temp,"R2") == 0)
+        s = "010";
+    else if (strcmp(temp,"R3") == 0)
+        s = "011";
+    else if (strcmp(temp,"R4") == 0)
+        s = "100";
+   return s;
 }
-
-void pass2()
-{
-	in_f.open("input.txt");
-	out_f.open("output.txt");
-	while(in_f >> word)
-	{
-		pointer = search_MOT(word);
-		if(pointer == -1)
-		{
-			str = word;
-			if(word.find(":") != -1) 
- 			{
- 				out_f << "";
-			}
-			else if(word == "global") 
-			{
-				in_f >> word;
-				out_f <<"global "<<word<<endl;
-			}
-			else if(word == "extern") 
-			{
-				in_f >> word;
-				out_f <<"extern "<<word<<endl;
-			}
-			else if(word == "section") 
-			{
-				in_f >> word;
-				out_f <<"section ."<<word<<endl;
-				lc = 0;
-			}
-			else 
-			{
-				in_f >> word;
-				in_f >> word;
-				out_f <<dec_to_bin(lc)<<" "<<get_data(word)<<endl;
-				size = get_size(word);
-				lc += size;
-			}
-		}
-		else
-		{
-			out_f <<dec_to_bin(lc)<<" "<<MOT[pointer].binary;
-			if(pointer==0||pointer==1) 
-			{
-				in_f >> word;
-				out_f <<" "<<word;
-			}
-			else if(pointer==5 || pointer==6 || pointer==7 || pointer==8 || pointer==13) 
-			{
-				in_f >> word;
-				var_lc = search_symbol_table(word);
-				if(var_lc == -1)
-					out_f <<" "<<dec_to_bin(stoi(word.c_str()));
-				else
-					out_f <<" "<<dec_to_bin(var_lc);
-			}
-			else if(pointer==2 || pointer==10) 
-			{
-				in_f >> word;
-				out_f <<" "<<word;
-				in_f >> word;
-				var_lc = search_symbol_table(word);
-				if(var_lc == -1)
-					out_f <<" "<<dec_to_bin(stoi(word.c_str()));
-				else
-					out_f <<" "<<dec_to_bin(var_lc);
-			}
-			else if(pointer == 11) 
-			{
-				in_f >> word;
-				out_f <<" "<<word;
-				in_f >> word;
-				out_f <<" "<<word;
-			}
-			lc += MOT[pointer].size;
-			out_f << "\n";
-		}	
-	}
-	out_f.close();
-	in_f.close();
+char *getConstantCode(int temp){
+    return MCode(temp);
 }
+Opcode* getOpcodeNode(char *op){
+    Opcode* temp = NULL;
+    int index = getHashIndex(op);
+    if(hash_table[index] == NULL){
+        printf("Wrong Opcode");
+        return NULL;
+    }
+    else{
+        temp = hash_table[index];
+        while(strcmp(temp->name,op)!=0 && temp!=NULL){
+            temp = temp->next;
+        }
+        if(temp == NULL){
+            printf("Opcode not found!");
+            return NULL;
+        }
+        else{
+            return temp;
+        }
+    }
+}
+char * getOpcodeFormat(Opcode* temp){
+    return temp->format;
+}
+int main(){
+    FILE *input_opcode;
+    FILE *output_machine_code;
+    FILE *input_instructions;
+    int ilc=0;
+    int base = 0;
+    char c,c2,c3,temp;
+    char opcode[100];
+    char machine_code[100];
+    char format[5];
+    base = 0;
+    input_opcode = fopen("input_opcode.txt","r+");
+    if (input_opcode == NULL)
+        printf("FILE OPENING PROBLEM");
+    do{
+        c = fscanf(input_opcode,"%s",opcode);
+        c2= fscanf(input_opcode,"%s",machine_code);
+        c3= fscanf(input_opcode,"%s",format);
+        Opcode* Node=new Opcode();
+        strcpy(Node->name,opcode);
+        strcpy(Node->code,machine_code);
+        strcpy(Node->format,format);
+        insertIntoHashMap(Node);
+    }while(c!=EOF && c2!=EOF && c3!=EOF);
+    int i=0;
+    for(i =0;i<13;i++){
+        if(hash_table[i]!=NULL){
+        Opcode* temp = hash_table[i];
+            while(temp!=NULL){
+                temp = temp->next;
+            }
+        }
+    }
+    input_instructions = fopen("input_instructions.txt","r+");
+    output_machine_code = fopen("output_machine_code.txt","w+");
+    char k;
+    char op[100];
+    while ( fgets ( op, sizeof op, input_instructions ) != NULL ){
+       int l=0;
+        while(op[l+1]!='\0'){
+            if(op[l]==':'){
+           Symbol *t;
+           Symbol *temp = new Symbol();
+           int i=0;
+           for(;i<l;i++)
+                temp->name[i] = op[i];
+            temp->name[i] = '\0';
+            temp->add = ilc + 1 + base;
+            temp->next = NULL;
+           if(head == NULL)
+                head = temp;
+           else{
+                t= head;
+                while(t->next!=NULL)
+                    t= t->next;
+                t->next = temp;
+           }
+       }
+       l++;
+     }
+     ilc++;
+ }
+   fclose(input_instructions);
+   input_instructions = fopen("input_instructions.txt","r+");
+   int * binary;
+   int count;
+    do{
+       k=fscanf(input_instructions,"%s",op);
+       int l=0;
+       while(op[l+1]!='\0'){
+           l++;
+       }
+       if(op[l]==':'){
+            fprintf(output_machine_code,"\n");
+    }
+       else{
+           char temp[100];
+           char temp2[100];
+           char temp3[100];
+           int temp4;
+            Opcode* current_node = getOpcodeNode(op);
+            fprintf(output_machine_code,"%s",current_node->code);
 
-int main()
-{
-	MOT[0] = {"ADD","00000001",1};
-	MOT[1] = {"INC","00000010",1};
-	MOT[2] = {"CMP","00000011",5};
-	MOT[3] = {"JNC","00000100",1};
-	MOT[4] = {"JNZ","00000101",1};
-	MOT[5] = {"ADDI","00000110",5};
-	MOT[6] = {"JE","00000111",5};
-	MOT[7] = {"JMP","00001000",5};
-	MOT[8] = {"LOAD","00001001",5};
-	MOT[9] = {"LOADI","00001010",1};
-	MOT[10] = {"MVI","00001011",5};
-	MOT[11] = {"MOV","00001100",1};
-	MOT[12] = {"STOP","00001101",1};
-	MOT[13] = {"STORE","00001110",5};
-	MOT[14] = {"STORI","00001111",1};
-	pass1();
-	lc = 0;
-	pass2();
-	return 0;
+            if (strcmp("z",getOpcodeFormat(current_node))==0){
+                fprintf(output_machine_code,"\n");
+            }
+            else if(strcmp("a",getOpcodeFormat(current_node))==0){
+                k = fscanf(input_instructions,"%s",temp);
+                binary = getAddressCode(temp);
+                for(count=0;count<10;count++){
+                    fprintf(output_machine_code,"%d",binary[count]);
+                }
+                fprintf(output_machine_code,"\n");
+            }
+            else if(strcmp("rrr",getOpcodeFormat(current_node))==0){
+                k = fscanf(input_instructions,"%s",temp);
+                k = fscanf(input_instructions,"%s",temp2);
+                k = fscanf(input_instructions,"%s",temp3);
+                fprintf(output_machine_code,"%s",findRegister(temp));
+                fprintf(output_machine_code,"%s",findRegister(temp2));
+                fprintf(output_machine_code,"%s",findRegister(temp3));
+                fprintf(output_machine_code,"\n");
+            }
+       }
+    }while(k!=EOF);
+    fclose(input_instructions);
+    fclose(output_machine_code);
+    fclose(input_opcode);
+
+    Symbol *p;
+    p=head;
+    FILE *f = fopen("symbol_table.txt","w+");
+    printf("successful");
+    while(p!=NULL){
+        fprintf(f,"%s => ",p->name);
+        fprintf(f,"%d\n",p->add);
+        p = p->next;
+    }
+    return 0;
 }
